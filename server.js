@@ -4,6 +4,7 @@ const { Server } = require("socket.io");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const Room = require("./models/Room");
+const Message = require("./models/Message");
 require("dotenv").config();
 
 const app = express();
@@ -20,17 +21,39 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.log(err));
 
 
-// チャットルーム表示
-app.get("/room/:roomId", async (req, res) => {
+// ホーム（ルーム一覧）
+app.get("/", async (req, res) => {
   const token = req.query.token;
-
-  if (!token) return res.send("トークンがありません。ログインしてください。");
+  if (!token) return res.send("トークンがありません");
 
   let decoded;
   try {
     decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (err) {
-    return res.send("トークンが無効です。ログインし直してください。");
+  } catch {
+    return res.send("トークンが無効です");
+  }
+
+  const rooms = await Room.find().sort({ createdAt: -1 });
+
+  res.render("home", {
+    username: decoded.username,
+    token,
+    rooms
+  });
+});
+
+
+// チャットルーム表示
+app.get("/room/:roomId", async (req, res) => {
+  const token = req.query.token;
+
+  if (!token) return res.send("トークンがありません");
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return res.send("トークンが無効です");
   }
 
   const username = decoded.username;
@@ -38,35 +61,66 @@ app.get("/room/:roomId", async (req, res) => {
 
   if (!room) return res.send("このルームは存在しません");
 
+  const messages = await Message.find({ roomId: room.roomId }).sort({ createdAt: 1 });
+
   res.render("room", {
     roomName: room.roomName,
     username,
     roomId: room.roomId,
-    token
+    token,
+    messages
   });
 });
 
 
-// WebSocket（リアルタイム通信）
+// WebSocket
 io.on("connection", (socket) => {
-  console.log("ユーザーが接続しました");
+  console.log("ユーザー接続");
 
   // 部屋に参加
   socket.on("joinRoom", ({ roomId, username }) => {
     socket.join(roomId);
-    console.log(`${username} が ${roomId} に参加`);
+    socket.roomId = roomId;
+    socket.username = username;
+
+    // 入室通知
+    io.to(roomId).emit("systemMessage", `${username} が入室しました`);
   });
 
-  // メッセージ受信
-  socket.on("chatMessage", ({ roomId, username, message }) => {
+  // メッセージ送信
+  socket.on("chatMessage", async ({ roomId, username, message }) => {
+
+    // DB 保存
+    const msg = await Message.create({
+      roomId,
+      username,
+      message,
+      readBy: [username] // 自分は既読
+    });
+
+    // 全員に送信
     io.to(roomId).emit("chatMessage", {
       username,
-      message
+      message,
+      messageId: msg._id
     });
   });
 
+  // 既読処理
+  socket.on("readMessage", async ({ messageId, username, roomId }) => {
+    await Message.updateOne(
+      { _id: messageId },
+      { $addToSet: { readBy: username } }
+    );
+
+    io.to(roomId).emit("updateRead", { messageId, username });
+  });
+
+  // 退出
   socket.on("disconnect", () => {
-    console.log("ユーザーが切断しました");
+    if (socket.roomId && socket.username) {
+      io.to(socket.roomId).emit("systemMessage", `${socket.username} が退出しました`);
+    }
   });
 });
 
