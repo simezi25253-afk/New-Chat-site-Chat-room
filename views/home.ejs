@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ルーム一覧</title>
+</head>
+<body>
+
+<h1>ようこそ、<%= username %> さん</h1>
+
+<h2>ルーム一覧</h2>
+
+<ul>
+  <% rooms.forEach(room => { %>
+    <li>
+      <a href="/room/<%= room.roomId %>?token=<%= token %>">
+        <%= room.roomName %>（作成者：<%= room.createdBy %>）
+      </a>
+    </li>
+  <% }) %>
+</ul>
+
+</body>
+</html>
