@@ -86,8 +86,56 @@
   <button id="send-btn">送信</button>
 </div>
 
+<script><script src="/socket.io/socket.io.js"></script>
 <script>
-  // 後で WebSocket をここに組み込む
+  const socket = io();
+
+  const roomId = "<%= roomId %>";
+  const username = "<%= username %>";
+
+  // 部屋に参加
+  socket.emit("joinRoom", { roomId, username });
+
+  const chatContainer = document.getElementById("chat-container");
+  const input = document.getElementById("message-input");
+  const sendBtn = document.getElementById("send-btn");
+
+  // メッセージ送信
+  sendBtn.addEventListener("click", () => {
+    const message = input.value.trim();
+    if (!message) return;
+
+    socket.emit("chatMessage", {
+      roomId,
+      username,
+      message
+    });
+
+    // 自分のメッセージを右側に表示
+    addMessage(username, message, true);
+
+    input.value = "";
+  });
+
+  // 他人のメッセージ受信
+  socket.on("chatMessage", ({ username, message }) => {
+    addMessage(username, message, false);
+  });
+
+  // メッセージ表示関数
+  function addMessage(username, message, isMe) {
+    const div = document.createElement("div");
+    div.classList.add("message");
+    if (isMe) div.classList.add("me");
+
+    div.innerHTML = `<strong>${username}</strong><br>${message}`;
+    chatContainer.appendChild(div);
+
+    // 自動スクロール
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+</script>
+
   console.log("UI 読み込み完了");
 </script>
 
